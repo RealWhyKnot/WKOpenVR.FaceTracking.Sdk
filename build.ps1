@@ -1,12 +1,20 @@
 param(
-    [string]$Configuration = "Release"
+    [string]$Configuration = "Release",
+    [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $versionPath = Join-Path $root "version.txt"
+if (-not [string]::IsNullOrWhiteSpace($Version)) {
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($versionPath, $Version.Trim(), $utf8NoBom)
+}
 $version = [System.IO.File]::ReadAllText($versionPath).Trim()
+if ([string]::IsNullOrWhiteSpace($version)) {
+    throw "version.txt is empty"
+}
 $packageDir = Join-Path $root "artifacts\packages"
 
 New-Item -ItemType Directory -Force -Path $packageDir | Out-Null

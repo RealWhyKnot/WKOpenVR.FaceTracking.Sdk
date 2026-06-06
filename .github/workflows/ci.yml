@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build + test
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-sdk-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json', 'version.txt') }}
+          restore-keys: |
+            nuget-sdk-${{ runner.os }}-
+
+      - name: Build package
+        shell: pwsh
+        run: .\build.ps1 -Configuration Release
+
+      - name: Run tests
+        shell: pwsh
+        run: .\test.ps1 -Configuration Release
+
+      - name: Run lint
+        shell: pwsh
+        run: .\lint.ps1 -Configuration Release
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: wkopenvr-face-sdk-${{ github.sha }}
+          path: artifacts/packages/*.nupkg
+          if-no-files-found: error

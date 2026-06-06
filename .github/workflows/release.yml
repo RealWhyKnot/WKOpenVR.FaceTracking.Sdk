@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version without leading v
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: package
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-sdk-release-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json') }}
+          restore-keys: |
+            nuget-sdk-release-${{ runner.os }}-
+
+      - name: Build tagged package
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          $version = $env:INPUT_VERSION
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            $version = $env:TAG_NAME -replace '^v', ''
+          }
+          if ([string]::IsNullOrWhiteSpace($version)) { throw "Release version is empty." }
+
+          .\build.ps1 -Configuration Release -Version $version
+          .\test.ps1 -Configuration Release
+
+          $packages = @(Get-ChildItem -Path "artifacts/packages" -Filter "WKOpenVR.FaceTracking.Sdk.*.nupkg")
+          if ($packages.Count -eq 0) {
+            throw "No SDK package was created."
+          }
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: wkopenvr-face-sdk-${{ github.ref_name }}
+          path: artifacts/packages/*.nupkg
+          if-no-files-found: error
