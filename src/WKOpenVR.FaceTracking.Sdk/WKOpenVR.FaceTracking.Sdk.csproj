@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageId>WKOpenVR.FaceTracking.Sdk</PackageId>
+    <Title>WKOpenVR Face Tracking SDK</Title>
+    <Authors>WhyKnot</Authors>
+    <Description>Native face module contract for WKOpenVR modules.</Description>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>WKOpenVR;face-tracking;module</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>
