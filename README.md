@@ -10,6 +10,7 @@ This repository builds a local NuGet package:
 ```
 
 Packages are written to `artifacts\packages`. Publishing to public or shared feeds is intentionally not part of these scripts.
+Tagged releases attach the NuGet package to GitHub Releases so developers can download it directly without a public package feed.
 
 ## Module Contract
 

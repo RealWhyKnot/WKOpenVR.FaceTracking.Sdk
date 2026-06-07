@@ -12,7 +12,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   package:
@@ -40,9 +40,11 @@ jobs:
             nuget-sdk-release-${{ runner.os }}-
 
       - name: Build tagged package
+        id: package
         shell: pwsh
         env:
           TAG_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           $version = $env:INPUT_VERSION
@@ -50,6 +52,9 @@ jobs:
             $version = $env:TAG_NAME -replace '^v', ''
           }
           if ([string]::IsNullOrWhiteSpace($version)) { throw "Release version is empty." }
+          if ($version -match '-beta' -and $version -notmatch '^\d{4}\.\d+\.\d+\.\d+-beta$') {
+            throw "Beta versions must use YYYY.M.D.N-beta."
+          }
 
           .\build.ps1 -Configuration Release -Version $version
           .\test.ps1 -Configuration Release
@@ -58,6 +63,31 @@ jobs:
           if ($packages.Count -eq 0) {
             throw "No SDK package was created."
           }
+          $shaLines = @()
+          foreach ($package in $packages) {
+            $sha = (Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $shaLines += "$($package.Name) sha256=$sha"
+          }
+          $notes = @(
+            "WKOpenVR native face-tracking SDK package.",
+            "",
+            "Install from the attached NuGet package or add this release asset to a local NuGet source.",
+            "",
+            "Checksums:",
+            ($shaLines -join "`n")
+          ) -join "`n"
+          $notesPath = Join-Path $env:RUNNER_TEMP "release-notes.md"
+          [System.IO.File]::WriteAllText($notesPath, $notes, (New-Object System.Text.UTF8Encoding($false)))
+
+          $isBeta = $version -match '-beta$'
+          $tag = $env:TAG_NAME
+          if ($env:REF_TYPE -ne "tag") {
+            $tag = "v$version"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "notes_path=$notesPath" >> $env:GITHUB_OUTPUT
+          "is_beta=$($isBeta.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v7
@@ -65,3 +95,19 @@ jobs:
           name: wkopenvr-face-sdk-${{ github.ref_name }}
           path: artifacts/packages/*.nupkg
           if-no-files-found: error
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.package.outputs.tag }}
+          IS_BETA: ${{ steps.package.outputs.is_beta }}
+          NOTES_PATH: ${{ steps.package.outputs.notes_path }}
+        run: |
+          $assets = @(Get-ChildItem -Path "artifacts/packages" -Filter "WKOpenVR.FaceTracking.Sdk.*.nupkg" | ForEach-Object { $_.FullName })
+          if ($assets.Count -eq 0) { throw "No release assets found." }
+
+          $extra = @()
+          if ($env:IS_BETA -eq "true") { $extra = @("--prerelease", "--latest=false") }
+
+          gh release create $env:TAG_NAME --title $env:TAG_NAME --notes-file $env:NOTES_PATH @extra @assets
