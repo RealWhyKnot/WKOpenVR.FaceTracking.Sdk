@@ -36,6 +36,7 @@ jobs:
         run: |
           ./.github/scripts/Test-WorkflowSyntax.ps1
           ./.github/scripts/Test-NightlyBetaPlan.ps1
+          ./.github/scripts/Test-GenerateReleaseNotes.ps1
 
       - name: Cache NuGet packages
         uses: actions/cache@v5
@@ -69,27 +70,22 @@ jobs:
           if ($packages.Count -eq 0) {
             throw "No SDK package was created."
           }
-          $shaLines = @()
-          foreach ($package in $packages) {
-            $sha = (Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            $shaLines += "$($package.Name) sha256=$sha"
-          }
-          $notes = @(
-            "WKOpenVR native face-tracking SDK package.",
-            "",
-            "Install from the attached NuGet package or add this release asset to a local NuGet source.",
-            "",
-            "Checksums:",
-            ($shaLines -join "`n")
-          ) -join "`n"
-          $notesPath = Join-Path $env:RUNNER_TEMP "release-notes.md"
-          [System.IO.File]::WriteAllText($notesPath, $notes, (New-Object System.Text.UTF8Encoding($false)))
-
           $isBeta = $version -match '-beta$'
           $tag = $env:TAG_NAME
           if ($env:REF_TYPE -ne "tag") {
             $tag = "v$version"
           }
+          $artifactPaths = [string[]]@($packages | ForEach-Object { $_.FullName })
+          $notesOutput = & .\.github\scripts\Generate-ReleaseNotes.ps1 `
+            -Tag $tag `
+            -Repo '${{ github.repository }}' `
+            -PackageName 'WKOpenVR Face Tracking SDK' `
+            -ArtifactPath $artifactPaths
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $notes = ($notesOutput -join [System.Environment]::NewLine) + [System.Environment]::NewLine
+          $notesPath = Join-Path $env:RUNNER_TEMP "release-notes.md"
+          [System.IO.File]::WriteAllText($notesPath, $notes, (New-Object System.Text.UTF8Encoding($false)))
+
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "notes_path=$notesPath" >> $env:GITHUB_OUTPUT
