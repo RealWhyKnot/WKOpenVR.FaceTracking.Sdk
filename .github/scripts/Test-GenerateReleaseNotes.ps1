@@ -45,7 +45,8 @@ function Invoke-Generator {
         -Repo "RealWhyKnot/WKOpenVR.FaceTracking.Sdk" `
         -PackageName "WKOpenVR Face Tracking SDK" `
         -TemplateDir (Join-Path (Get-Location).Path ".github\release-template") `
-        -ArtifactPath $artifactPaths
+        -ArtifactPath $artifactPaths `
+        -IntegrityName "sdk.integrity.tsv"
     if ($LASTEXITCODE -ne 0) {
         throw "Generate-ReleaseNotes failed for $Tag"
     }
@@ -116,7 +117,8 @@ Match the SDK package version to the target WKOpenVR host support window.
     Assert-Contains -Text $stableNotes -Expected "feat(sdk): add sample contract helper"
     Assert-Contains -Text $stableNotes -Expected "ci(release): compose package notes"
     Assert-Contains -Text $stableNotes -Expected "compare/v2026.6.1.0...v2026.6.3.0"
-    Assert-Contains -Text $stableNotes -Expected "| sdk.nupkg |"
+    Assert-Contains -Text $stableNotes -Expected "sdk.integrity.tsv"
+    Assert-NotContains -Text $stableNotes -Unexpected "| sdk.nupkg |"
     Assert-NotContains -Text $stableNotes -Unexpected '$sha'
     Assert-Contains -Text $stableNotes -Expected "Download WKOpenVR Face Tracking SDK"
 

@@ -127,6 +127,15 @@ jobs:
           if ($packages.Count -eq 0) {
             throw "No SDK package was created."
           }
+          $integrityName = "WKOpenVR.FaceTracking.Sdk.$version.integrity.tsv"
+          $integrity = Join-Path "artifacts/packages" $integrityName
+          $integrityRows = [System.Collections.Generic.List[string]]::new()
+          $integrityRows.Add("path`tbytes`tsha256") | Out-Null
+          foreach ($package in $packages) {
+            $sha = (Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash.ToUpperInvariant()
+            $integrityRows.Add("$($package.Name)`t$($package.Length)`t$sha") | Out-Null
+          }
+          [System.IO.File]::WriteAllLines($integrity, [string[]]$integrityRows, [System.Text.UTF8Encoding]::new($false))
           $isBeta = $version -match '-beta$'
           $tag = $env:TAG_NAME
           if ($env:REF_TYPE -ne "tag") {
@@ -137,7 +146,8 @@ jobs:
             -Tag $tag `
             -Repo '${{ github.repository }}' `
             -PackageName 'WKOpenVR Face Tracking SDK' `
-            -ArtifactPath $artifactPaths
+            -ArtifactPath $artifactPaths `
+            -IntegrityName $integrityName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $notes = ($notesOutput -join [System.Environment]::NewLine) + [System.Environment]::NewLine
           $notesPath = Join-Path $env:RUNNER_TEMP "release-notes.md"
@@ -152,7 +162,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: wkopenvr-face-sdk-${{ github.ref_name }}
-          path: artifacts/packages/*.nupkg
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.integrity.tsv
           if-no-files-found: error
 
       - name: Publish GitHub release
@@ -163,7 +175,7 @@ jobs:
           IS_BETA: ${{ steps.package.outputs.is_beta }}
           NOTES_PATH: ${{ steps.package.outputs.notes_path }}
         run: |
-          $assets = @(Get-ChildItem -Path "artifacts/packages" -Filter "WKOpenVR.FaceTracking.Sdk.*.nupkg" | ForEach-Object { $_.FullName })
+          $assets = @(Get-ChildItem -Path "artifacts/packages" -Include "WKOpenVR.FaceTracking.Sdk.*.nupkg", "WKOpenVR.FaceTracking.Sdk.*.integrity.tsv" -Recurse | ForEach-Object { $_.FullName })
           if ($assets.Count -eq 0) { throw "No release assets found." }
 
           $extra = @()
