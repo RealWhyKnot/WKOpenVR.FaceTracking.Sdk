@@ -37,10 +37,7 @@ function Commit-TestChange {
 }
 
 function Invoke-Generator {
-    param(
-        [string] $Tag,
-        [switch] $AllowEmpty
-    )
+    param([string] $Tag)
 
     $artifactPaths = [string[]]@("artifacts\packages\sdk.nupkg")
     $output = & $Generator `
@@ -49,8 +46,7 @@ function Invoke-Generator {
         -PackageName "WKOpenVR Face Tracking SDK" `
         -TemplateDir (Join-Path (Get-Location).Path ".github\release-template") `
         -ArtifactPath $artifactPaths `
-        -IntegrityName "sdk.integrity.tsv" `
-        -AllowEmpty:$AllowEmpty
+        -IntegrityName "sdk.integrity.tsv"
     if ($LASTEXITCODE -ne 0) {
         throw "Generate-ReleaseNotes failed for $Tag"
     }
@@ -70,6 +66,24 @@ function Assert-NotContains {
 
     if ($Text.Contains($Unexpected)) {
         throw "Expected release notes not to contain '$Unexpected'."
+    }
+}
+
+function Assert-ThrowsContains {
+    param([scriptblock] $Script, [string] $Expected)
+
+    $failed = $false
+    try {
+        & $Script | Out-Null
+    }
+    catch {
+        $failed = $true
+        if (-not $_.Exception.Message.Contains($Expected)) {
+            throw "Expected failure to contain '$Expected' but got '$($_.Exception.Message)'."
+        }
+    }
+    if (-not $failed) {
+        throw "Expected command to fail with '$Expected'."
     }
 }
 
@@ -139,9 +153,7 @@ Match the SDK package version to the target WKOpenVR host support window.
 
     Commit-TestChange -Path "CHANGELOG.md" -Content "# Changelog`n" -Subject "docs(changelog): promote beta [skip changelog]"
     Invoke-Git tag -a v2026.6.5.0-beta -m "v2026.6.5.0-beta" | Out-Null
-    $emptyBetaNotes = Invoke-Generator -Tag "v2026.6.5.0-beta" -AllowEmpty
-    Assert-Contains -Text $emptyBetaNotes -Expected "_Maintenance release; see commit log for details._"
-    Assert-NotContains -Text $emptyBetaNotes -Unexpected "Full changelog:"
+    Assert-ThrowsContains -Script { Invoke-Generator -Tag "v2026.6.5.0-beta" } -Expected "No release-note commits found"
 
     Write-Host "Generate-ReleaseNotes tests passed."
 }
