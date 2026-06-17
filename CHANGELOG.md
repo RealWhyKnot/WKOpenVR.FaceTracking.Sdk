@@ -8,6 +8,7 @@ The `release.yml` body for each tag is composed mechanically from the commit sli
 
 ### Fixed
 - **release:** Tolerate empty beta release notes (4941cad)
+- **release:** Reject empty beta release notes (4a1d736)
 
 ---
 
