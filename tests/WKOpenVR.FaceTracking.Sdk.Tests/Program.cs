@@ -10,7 +10,8 @@ var tests = new (string Name, Action Body)[]
     ("Compatibility matrix", CompatibilityMatrix),
     ("Leveled logger gates by level", LeveledLoggerGates),
     ("Trace level forwards everything", TraceLevelForwards),
-    ("Legacy context maps to information", LegacyContextMapsToInformation)
+    ("Legacy context maps to information", LegacyContextMapsToInformation),
+    ("Host reflection contract", WKOpenVR.FaceTracking.Sdk.Tests.HostReflectionContract.Verify)
 };
 
 foreach (var test in tests)
