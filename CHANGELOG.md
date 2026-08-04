@@ -6,7 +6,8 @@ The `release.yml` body for each tag is composed mechanically from the commit sli
 
 ## Unreleased
 
-_No notable changes since the last release._
+### Added
+- **sdk:** Add gaze inputs, pacing, status, and config watcher (892e374)
 
 ---
 
