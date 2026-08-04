@@ -18,6 +18,34 @@ Modules implement `WKOpenVR.FaceTracking.Sdk.IFaceTrackingModule` and fill a reu
 
 The public `FaceExpression` enum contains the 88 expression slots from the current upstream UnifiedExpressions order. It excludes the upstream `Max` sentinel.
 
+## Lifecycle and threading
+
+The host loads a module into its own process and drives it like this:
+
+- `InitializeAsync` and `TeardownAsync` run on the host's command thread. `UpdateAsync` runs on a
+  separate dedicated thread, so state handed from init to update crosses threads; publish it safely
+  (set it before returning from `InitializeAsync`, or use volatile/lock semantics).
+- **`UpdateAsync` is called in a tight loop with no delay between calls.** The module must pace
+  itself -- block on its input (audio buffer, capture frame) or sleep -- or it will spin a CPU core
+  at 100%. Downstream consumers read at roughly 120 Hz, so producing faster than that is wasted work.
+- An exception escaping `UpdateAsync` terminates the module process. Catch and degrade instead of
+  throwing for recoverable conditions (a lost capture device, a transient read failure).
+- The host owns the `FaceFrame`: it clears the frame before each `UpdateAsync` and sanitizes it
+  afterwards (`FaceFrameValidator.Sanitize`). Write your outputs and set `Flags` every update;
+  a section without its flag set is ignored regardless of the values in it.
+- Section validity is `FaceFrameFlags` only. The `FaceModuleInitResult` booleans select which
+  channels the host activates; `HeadAvailable` in the request is always true today.
+- `FaceModuleContext.ConfigDirectory` is the module's install directory for the installed version.
+  It is replaced on module update, so treat it as read-only package content and keep user-writable
+  state under the WKOpenVR profiles directory instead.
+
+## Capabilities
+
+`FaceModuleCapabilities` is declarative metadata. `AudioInput` declares that the module captures
+audio; the module opens and owns its capture device (WASAPI/NAudio or similar) -- the host does not
+provide an audio stream. `Eye` and `Expression` describe which output channels the module can drive;
+the per-session decision is made in `FaceModuleInitResult`.
+
 ## Logging
 
 `FaceModuleContext.Logger` is an `IFaceModuleLogger` with `Trace`/`Debug`/`Information`/`Warning`/`Error`
