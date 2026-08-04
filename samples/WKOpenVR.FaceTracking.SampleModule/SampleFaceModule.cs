@@ -2,10 +2,14 @@ using WKOpenVR.FaceTracking.Sdk;
 
 namespace WKOpenVR.FaceTracking.SampleModule;
 
-public sealed class SampleFaceModule : IFaceTrackingModule
+public sealed class SampleFaceModule : IFaceTrackingModule, IFaceModuleStatusSource
 {
     private float phase;
     private IFaceModuleLogger _logger = NullFaceModuleLogger.Instance;
+
+    // The host drives UpdateAsync in a tight loop with no delay; a module that does
+    // not block on an input source must pace itself or it spins a core.
+    private readonly FrameRateLimiter _pacer = new(60.0f);
 
     public FaceModuleInfo ModuleInfo { get; } = new(
         "3e9b9b76-ea55-4c73-beb4-0af3c1c4c900",
@@ -32,6 +36,7 @@ public sealed class SampleFaceModule : IFaceTrackingModule
 
     public ValueTask UpdateAsync(FaceFrame frame, CancellationToken cancellationToken)
     {
+        _pacer.WaitForNext(cancellationToken);
         frame.Clear();
         phase += 0.05f;
 
@@ -56,5 +61,10 @@ public sealed class SampleFaceModule : IFaceTrackingModule
     public ValueTask TeardownAsync(CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
+    }
+
+    public FaceModuleStatus GetStatus()
+    {
+        return new FaceModuleStatus(FaceModuleHealth.Healthy, "synthetic sine output");
     }
 }

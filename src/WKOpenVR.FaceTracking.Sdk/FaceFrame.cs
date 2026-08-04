@@ -15,11 +15,15 @@ public sealed class FaceFrame
 
     public HeadFrame Head { get; } = new();
 
+    /// <summary>Host-supplied per-update inputs (gaze targets). Empty when the host provides none.</summary>
+    public FaceFrameInputs Inputs { get; } = new();
+
     public void Clear()
     {
         Array.Clear(Expressions);
         Eye.Clear();
         Head.Clear();
+        Inputs.Clear();
         Flags = FaceFrameFlags.None;
     }
 

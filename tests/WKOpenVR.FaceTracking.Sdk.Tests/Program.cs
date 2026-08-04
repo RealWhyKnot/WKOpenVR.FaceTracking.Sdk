@@ -11,6 +11,13 @@ var tests = new (string Name, Action Body)[]
     ("Leveled logger gates by level", LeveledLoggerGates),
     ("Trace level forwards everything", TraceLevelForwards),
     ("Legacy context maps to information", LegacyContextMapsToInformation),
+    ("Gaze target packing round-trip", GazeTargetPackingRoundTrip),
+    ("Gaze target sanitization", GazeTargetSanitization),
+    ("Frame clear resets inputs", FrameClearResetsInputs),
+    ("Frame rate limiter paces", FrameRateLimiterPaces),
+    ("Module status values are pinned", ModuleStatusValuesPinned),
+    ("Config watcher detects changes", ConfigWatcherDetectsChanges),
+    ("Config watcher prefers user file", ConfigWatcherPrefersUserFile),
     ("Host reflection contract", WKOpenVR.FaceTracking.Sdk.Tests.HostReflectionContract.Verify)
 };
 
@@ -131,6 +138,143 @@ static void LegacyContextMapsToInformation()
 
     AssertEqual(1, messages.Count);
     AssertEqual("kept", messages[0]);
+}
+
+static void GazeTargetPackingRoundTrip()
+{
+    var frame = new FaceFrame();
+    float[] packed =
+    [
+        0.10f, -0.20f, 0.05f, 0.01f, -0.02f, 0.90f, 1.0f, 42.0f,
+        -0.30f, 0.15f, 0.10f, 0.00f, 0.00f, 0.40f, 2.0f, 7.0f,
+    ];
+    frame.Inputs.SetGazeTargets(packed, 2);
+
+    AssertEqual(2, frame.Inputs.GazeTargetCount);
+    FaceGazeTarget first = frame.Inputs.GazeTargets[0];
+    AssertEqual(0.10f, first.Yaw);
+    AssertEqual(-0.20f, first.Pitch);
+    AssertEqual(0.90f, first.Weight);
+    AssertEqual((int)FaceGazeTargetKind.Face, (int)first.Kind);
+    AssertEqual(42, first.TrackId);
+    AssertEqual((int)FaceGazeTargetKind.Motion, (int)frame.Inputs.GazeTargets[1].Kind);
+}
+
+static void GazeTargetSanitization()
+{
+    var inputs = new FaceFrameInputs();
+
+    // Second entry has a NaN yaw and is dropped; weight above 1 clamps; kind 9 decodes Unknown.
+    float[] packed =
+    [
+        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.7f, 9.0f, 1.0f,
+        float.NaN, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f, 1.0f, 2.0f,
+    ];
+    inputs.SetGazeTargets(packed, 2);
+    AssertEqual(1, inputs.GazeTargetCount);
+    AssertEqual(1.0f, inputs.GazeTargets[0].Weight);
+    AssertEqual((int)FaceGazeTargetKind.Unknown, (int)inputs.GazeTargets[0].Kind);
+
+    // Count clamps to what the packed array actually holds and to the maximum.
+    float[] one = [0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.0f, 3.0f];
+    inputs.SetGazeTargets(one, 99);
+    AssertEqual(1, inputs.GazeTargetCount);
+
+    inputs.SetGazeTargets(one, 0);
+    AssertEqual(0, inputs.GazeTargetCount);
+}
+
+static void FrameClearResetsInputs()
+{
+    var frame = new FaceFrame();
+    float[] one = [0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.0f, 3.0f];
+    frame.Inputs.SetGazeTargets(one, 1);
+    frame.SetExpression(FaceExpression.JawOpen, 0.5f);
+    AssertEqual(1, frame.Inputs.GazeTargetCount);
+
+    // Sanitize must leave inputs alone; Clear must reset them.
+    FaceFrameValidator.Sanitize(frame);
+    AssertEqual(1, frame.Inputs.GazeTargetCount);
+    frame.Clear();
+    AssertEqual(0, frame.Inputs.GazeTargetCount);
+}
+
+static void FrameRateLimiterPaces()
+{
+    var limiter = new FrameRateLimiter(250.0f);
+    var clock = System.Diagnostics.Stopwatch.StartNew();
+    for (int i = 0; i < 6; i++)
+    {
+        limiter.WaitForNext();
+    }
+
+    // First call is free; five paced waits at 4 ms each. Keep the bound loose for CI.
+    AssertTrue(clock.Elapsed.TotalMilliseconds >= 5 * 4.0 * 0.5);
+
+    limiter.Reset();
+    var reset = System.Diagnostics.Stopwatch.StartNew();
+    limiter.WaitForNext();
+    AssertTrue(reset.Elapsed.TotalMilliseconds < 50.0);
+}
+
+static void ModuleStatusValuesPinned()
+{
+    AssertEqual(0, (int)FaceModuleHealth.Healthy);
+    AssertEqual(1, (int)FaceModuleHealth.Degraded);
+    AssertEqual(2, (int)FaceModuleHealth.DeviceLost);
+    AssertEqual("mic gone", new FaceModuleStatus(FaceModuleHealth.DeviceLost, "mic gone").Detail ?? "");
+}
+
+static void ConfigWatcherDetectsChanges()
+{
+    string root = Path.Combine(Path.GetTempPath(), "wkovr-sdk-watcher-" + Guid.NewGuid().ToString("N"));
+    string packaged = Path.Combine(root, "module");
+    string profiles = Path.Combine(root, "profiles");
+    Directory.CreateDirectory(packaged);
+    Directory.CreateDirectory(profiles);
+    try
+    {
+        var watcher = new FaceModuleConfigWatcher(
+            new FaceModuleContext(packaged), "settings.json", pollSeconds: 0.0, profilesDirectory: profiles);
+
+        AssertTrue(!watcher.TryReadChanged(out _));
+
+        File.WriteAllText(Path.Combine(packaged, "settings.json"), "{\"a\":1}");
+        AssertTrue(watcher.TryReadChanged(out string json));
+        AssertEqual("{\"a\":1}", json);
+        AssertTrue(!watcher.TryReadChanged(out _));
+
+        File.SetLastWriteTimeUtc(Path.Combine(packaged, "settings.json"), DateTime.UtcNow.AddSeconds(5));
+        AssertTrue(watcher.TryReadChanged(out _));
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static void ConfigWatcherPrefersUserFile()
+{
+    string root = Path.Combine(Path.GetTempPath(), "wkovr-sdk-watcher-" + Guid.NewGuid().ToString("N"));
+    string packaged = Path.Combine(root, "module");
+    string profiles = Path.Combine(root, "profiles");
+    Directory.CreateDirectory(packaged);
+    Directory.CreateDirectory(profiles);
+    try
+    {
+        File.WriteAllText(Path.Combine(packaged, "settings.json"), "packaged");
+        File.WriteAllText(Path.Combine(profiles, "settings.json"), "user");
+        var watcher = new FaceModuleConfigWatcher(
+            new FaceModuleContext(packaged), "settings.json", pollSeconds: 0.0, profilesDirectory: profiles);
+
+        AssertTrue(watcher.TryReadChanged(out string json));
+        AssertEqual("user", json);
+        AssertEqual(watcher.UserConfigPath, watcher.ActivePath!);
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
 }
 
 static void AssertTrue(bool value)

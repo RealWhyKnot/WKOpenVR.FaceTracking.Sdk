@@ -81,6 +81,20 @@ public static class HostReflectionContract
         Require(version.IsLiteral, "FaceModuleAbi.Version must be a const");
         Require(version.GetRawConstantValue() is 1, "FaceModuleAbi.Version must be 1 on this branch");
 
+        // Per-update inputs pushed by the host (probed as nullable: absence on either
+        // side of the boundary degrades to zero targets).
+        RequireProperty(faceFrame, "Inputs");
+        Type inputs = RequireType("WKOpenVR.FaceTracking.Sdk.FaceFrameInputs");
+        Require(
+            inputs.GetMethod("SetGazeTargets", [typeof(float[]), typeof(int)]) is not null,
+            "FaceFrameInputs.SetGazeTargets(float[], int) method");
+
+        // Optional status source detected by interface full name, polled via GetStatus.
+        Type statusSource = RequireType("WKOpenVR.FaceTracking.Sdk.IFaceModuleStatusSource");
+        RequireMethod(statusSource, "GetStatus");
+        RequireProperty(typeof(FaceModuleStatus), "Health");
+        RequireProperty(typeof(FaceModuleStatus), "Detail");
+
         // Numeric flag values the host hardcodes.
         Require((long)FaceFrameFlags.ExpressionsValid == 1, "FaceFrameFlags.ExpressionsValid == 1");
         Require((long)FaceFrameFlags.EyeValid == 2, "FaceFrameFlags.EyeValid == 2");
